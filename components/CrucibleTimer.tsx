@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Square, RotateCcw, CheckCircle2, Sparkles, ArrowLeft } from 'lucide-react';
+import { Play, Square, RotateCcw, CheckCircle2, Sparkles, ArrowLeft, Bell, Smartphone, VolumeX } from 'lucide-react';
 import { generateForgeWisdom } from '../services/geminiService';
 import { AppView } from '../types';
 
@@ -9,6 +9,7 @@ interface CrucibleTimerProps {
 }
 
 const TIMER_DURATION = 600; // 10 minutes in seconds
+type NotificationMode = 'bell' | 'vibration' | 'silent';
 
 const CrucibleTimer: React.FC<CrucibleTimerProps> = ({ onComplete, onBack }) => {
   const [taskName, setTaskName] = useState('');
@@ -18,6 +19,7 @@ const CrucibleTimer: React.FC<CrucibleTimerProps> = ({ onComplete, onBack }) => 
   const [feeling, setFeeling] = useState('');
   const [wisdom, setWisdom] = useState<string | null>(null);
   const [loadingWisdom, setLoadingWisdom] = useState(false);
+  const [notificationMode, setNotificationMode] = useState<NotificationMode>('bell');
 
   // Use 'any' to avoid NodeJS.Timeout type issues in browser environment
   const timerRef = useRef<any>(null);
@@ -36,7 +38,50 @@ const CrucibleTimer: React.FC<CrucibleTimerProps> = ({ onComplete, onBack }) => 
     };
   }, [isActive, timeLeft]);
 
+  const playNotification = () => {
+    if (notificationMode === 'silent') return;
+
+    // Vibration Logic
+    if (notificationMode === 'vibration') {
+      if (navigator.vibrate) {
+        // Pattern: Long, pause, Short, pause, Long (Gong-like rhythm)
+        navigator.vibrate([500, 200, 300, 200, 800]);
+      }
+    }
+
+    // Sound Logic (Synthesized Gong/Bell)
+    if (notificationMode === 'bell') {
+      try {
+        const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioContext) return;
+
+        const ctx = new AudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        // Sound Design: Low frequency "Gong" sound
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(330, ctx.currentTime); // E4 note (warm)
+        osc.frequency.exponentialRampToValueAtTime(55, ctx.currentTime + 2); // Drop pitch for heavy effect
+
+        // Envelope: Attack -> Decay
+        gain.gain.setValueAtTime(0, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.6, ctx.currentTime + 0.1); // Attack
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 3); // Long Decay
+
+        osc.start();
+        osc.stop(ctx.currentTime + 3.5);
+      } catch (e) {
+        console.error("Audio play failed", e);
+      }
+    }
+  };
+
   const handleCompleteTimer = async () => {
+    playNotification(); // Trigger notification
     setIsActive(false);
     setIsCompleted(true);
     if (timerRef.current) clearInterval(timerRef.current);
@@ -75,6 +120,33 @@ const CrucibleTimer: React.FC<CrucibleTimerProps> = ({ onComplete, onBack }) => 
   };
 
   const progress = ((TIMER_DURATION - timeLeft) / TIMER_DURATION) * 100;
+
+  // Notification Selector Component
+  const NotificationSelector = () => (
+    <div className="flex items-center justify-center space-x-4 mt-6 bg-slate-900/40 p-2 rounded-full border border-slate-800 backdrop-blur-sm">
+      <button
+        onClick={() => setNotificationMode('bell')}
+        className={`p-2 rounded-full transition-all ${notificationMode === 'bell' ? 'bg-amber-600 text-white shadow-[0_0_10px_rgba(245,158,11,0.5)]' : 'text-slate-500 hover:text-slate-300'}`}
+        title="종소리"
+      >
+        <Bell size={18} />
+      </button>
+      <button
+        onClick={() => setNotificationMode('vibration')}
+        className={`p-2 rounded-full transition-all ${notificationMode === 'vibration' ? 'bg-amber-600 text-white shadow-[0_0_10px_rgba(245,158,11,0.5)]' : 'text-slate-500 hover:text-slate-300'}`}
+        title="진동"
+      >
+        <Smartphone size={18} />
+      </button>
+      <button
+        onClick={() => setNotificationMode('silent')}
+        className={`p-2 rounded-full transition-all ${notificationMode === 'silent' ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-slate-300'}`}
+        title="무음"
+      >
+        <VolumeX size={18} />
+      </button>
+    </div>
+  );
 
   if (isCompleted) {
     return (
@@ -176,33 +248,38 @@ const CrucibleTimer: React.FC<CrucibleTimerProps> = ({ onComplete, onBack }) => 
         </div>
 
         {/* Controls */}
-        <div className="flex justify-center space-x-6">
-            {!isActive && timeLeft === TIMER_DURATION ? (
-                <button
-                    onClick={handleStart}
-                    disabled={!taskName}
-                    className={`flex items-center space-x-2 bg-slate-800 ${!taskName ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-700 hover:text-amber-400'} text-white px-8 py-3 rounded-full transition-all`}
-                >
-                    <Play size={20} fill="currentColor" />
-                    <span className="uppercase tracking-wide font-bold">점화</span>
-                </button>
-            ) : (
-                <>
-                    {isActive ? (
-                         <button onClick={handlePause} className="bg-slate-800 hover:bg-slate-700 text-white p-4 rounded-full transition-all">
-                            <Square size={20} fill="currentColor" />
-                         </button>
-                    ) : (
-                        <button onClick={handleStart} className="bg-slate-800 hover:bg-slate-700 text-green-400 p-4 rounded-full transition-all">
-                            <Play size={20} fill="currentColor" />
-                        </button>
-                    )}
-                    
-                    <button onClick={handleReset} className="bg-slate-800 hover:bg-slate-700 text-red-400 p-4 rounded-full transition-all">
-                        <RotateCcw size={20} />
+        <div className="flex flex-col items-center space-y-6">
+            <div className="flex justify-center space-x-6">
+                {!isActive && timeLeft === TIMER_DURATION ? (
+                    <button
+                        onClick={handleStart}
+                        disabled={!taskName}
+                        className={`flex items-center space-x-2 bg-slate-800 ${!taskName ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-700 hover:text-amber-400'} text-white px-8 py-3 rounded-full transition-all`}
+                    >
+                        <Play size={20} fill="currentColor" />
+                        <span className="uppercase tracking-wide font-bold">점화</span>
                     </button>
-                </>
-            )}
+                ) : (
+                    <>
+                        {isActive ? (
+                             <button onClick={handlePause} className="bg-slate-800 hover:bg-slate-700 text-white p-4 rounded-full transition-all">
+                                <Square size={20} fill="currentColor" />
+                             </button>
+                        ) : (
+                            <button onClick={handleStart} className="bg-slate-800 hover:bg-slate-700 text-green-400 p-4 rounded-full transition-all">
+                                <Play size={20} fill="currentColor" />
+                            </button>
+                        )}
+                        
+                        <button onClick={handleReset} className="bg-slate-800 hover:bg-slate-700 text-red-400 p-4 rounded-full transition-all">
+                            <RotateCcw size={20} />
+                        </button>
+                    </>
+                )}
+            </div>
+            
+            {/* Notification Selector */}
+            <NotificationSelector />
         </div>
       </div>
     </div>
